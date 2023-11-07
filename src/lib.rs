@@ -49,7 +49,7 @@ fn get_cmd<'a> (event: &InputEvent, rules: &'a HashMap<EhcpiEvent, String>)
 	rules.get(&ev)
 }
 
-#[derive(Eq, Hash, PartialEq)]
+#[derive(Eq, Hash, PartialEq, Debug)]
 enum EhcpiEvent {
 	Key(Key),
 	Switch(u16, i32),
@@ -147,4 +147,18 @@ fn parse_rules(path: &str) -> Result<HashMap<EhcpiEvent, String>, RuleParseError
 		ret.insert(event, cmd.to_string());
 	}
 	Ok(ret)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn test_rules() {
+		let wanted = HashMap::from([
+		(EhcpiEvent::Key(Key::KEY_MUTE), "something ".into()),
+		(EhcpiEvent::Switch(SwitchType::SW_LID.0, 0), "something else ".into()),
+		]);
+		let rules = parse_rules("examples/ehcpi-rs.conf").unwrap();
+		assert_eq!(wanted, rules);
+	}
 }
