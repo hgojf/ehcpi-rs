@@ -1,14 +1,16 @@
-use evdev::{Device, Key, SwitchType, InputEvent, EventType};
-use tokio::io::{BufReader, AsyncBufReadExt};
-use tokio::fs::{File, read_dir};
+use evdev::{Device, Key, InputEvent, SwitchType, EventType};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::fmt::Write;
 use tokio::process::Command;
 
-pub async fn run() {
-	let rules = Arc::new(parse_rules("/etc/ehcpi-rs.conf").await.unwrap());
-	let devices = get_devices(&rules).await.unwrap();
+pub fn run() {
+	let rules = parse_rules("/etc/ehcpi-rs.conf").unwrap();
+	let devices = get_devices(&rules).unwrap();
+	run_async(Arc::new(rules), devices);
+}
+
+#[tokio::main]
+async fn run_async(rules: Arc<HashMap<EhcpiEvent, String>>, devices: Vec<Device>) {
 	let mut handlers = Vec::new();
 	for device in devices {
 		let rules = rules.clone();
@@ -65,11 +67,12 @@ impl From<std::io::Error> for RuleParseError {
 	}
 }
 
-async fn get_devices(rules: &HashMap<EhcpiEvent, String>) -> Result<Vec<Device>, std::io::Error> {
+fn get_devices(rules: &HashMap<EhcpiEvent, String>) -> Result<Vec<Device>, std::io::Error> {
+	use std::fs::read_dir;
 	let mut result = Vec::new();
-	let mut dir = read_dir("/dev/input").await?;
-	while let Some(entry) = dir.next_entry().await? {
-		let filename = entry.path();
+	let dir = read_dir("/dev/input")?;
+	for entry in dir {
+		let filename = entry?.path();
 		let filename = filename.to_str().unwrap();
 		if !filename.starts_with("/dev/input/event") {
 			continue;
@@ -104,12 +107,16 @@ async fn get_devices(rules: &HashMap<EhcpiEvent, String>) -> Result<Vec<Device>,
 	Ok(result)
 }
 
-async fn parse_rules(path: &str) -> Result<HashMap<EhcpiEvent, String>, RuleParseError> {
+fn parse_rules(path: &str) -> Result<HashMap<EhcpiEvent, String>, RuleParseError> {
+	use std::fmt::Write;
+	use std::io::{BufRead, BufReader};
+	use std::fs::File;
 	let mut ret = HashMap::new();
-	let file = File::open(path).await?;
+	let file = File::open(path)?;
 	let file = BufReader::new(file);
-	let mut lines = file.lines();
-	while let Some(line) = lines.next_line().await? {
+	let lines = file.lines();
+	for line in lines {
+		let line = line?;
 		let mut iter = line.split_ascii_whitespace();
 		let key = iter.next().ok_or(RuleParseError::ParseError)?;
 		let event: EhcpiEvent;
